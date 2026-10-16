@@ -1,6 +1,7 @@
 
 import os
 import httpx
+import uvicorn
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
@@ -15,7 +16,9 @@ async def search_github_repositories(
     limit: int = 5,
 ) -> dict:
     """Search public GitHub repositories by keywords."""
+
     query = query.strip()
+
     if not query:
         return {
             "error": "Search query cannot be empty.",
@@ -37,6 +40,7 @@ async def search_github_repositories(
                 "User-Agent": "agent-reach-mcp",
             },
         )
+
         response.raise_for_status()
         data = response.json()
 
@@ -71,7 +75,9 @@ async def read_public_github_file(
 
     if not owner or not repo or not path or not ref:
         return {
-            "error": "Owner, repository, path, and ref are required."
+            "error": (
+                "Owner, repository, path, and ref are required."
+            )
         }
 
     url = (
@@ -85,8 +91,11 @@ async def read_public_github_file(
     ) as client:
         response = await client.get(
             url,
-            headers={"User-Agent": "agent-reach-mcp"},
+            headers={
+                "User-Agent": "agent-reach-mcp",
+            },
         )
+
         response.raise_for_status()
 
     content = response.text
@@ -101,7 +110,8 @@ async def read_public_github_file(
 
 @mcp.tool()
 def agent_reach_setup_status() -> dict:
-    """Report the capabilities currently implemented by this server."""
+    """Report the capabilities currently implemented."""
+
     return {
         "status": "starter",
         "available": [
@@ -117,7 +127,7 @@ def agent_reach_setup_status() -> dict:
         ],
         "transport": "Streamable HTTP",
         "note": (
-            "This server is a starter implementation, "
+            "This is a starter implementation, "
             "not the complete Agent-Reach integration."
         ),
     }
@@ -133,9 +143,12 @@ if __name__ == "__main__":
         ]
     )
 
-    mcp.run(
-        transport="streamable-http",
+    app = mcp._mcp_server.streamable_http_app(
+        transport_security=security
+    )
+
+    uvicorn.run(
+        app,
         host="0.0.0.0",
         port=port,
-        transport_security=security,
     )
