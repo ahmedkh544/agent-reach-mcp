@@ -1,19 +1,27 @@
 
 import os
 import httpx
-import uvicorn
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
+
 
 mcp = FastMCP("agent-reach-mcp")
 
 
 @mcp.tool()
 async def search_github_repositories(
-    query: str, limit: int = 5
+    query: str,
+    limit: int = 5,
 ) -> dict:
     """Search public GitHub repositories by keywords."""
+    query = query.strip()
+    if not query:
+        return {
+            "error": "Search query cannot be empty.",
+            "repositories": [],
+        }
+
     limit = max(1, min(limit, 10))
 
     async with httpx.AsyncClient(timeout=20) as client:
@@ -24,7 +32,10 @@ async def search_github_repositories(
                 "per_page": limit,
                 "sort": "stars",
             },
-            headers={"Accept": "application/vnd.github+json"},
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "agent-reach-mcp",
+            },
         )
         response.raise_for_status()
         data = response.json()
@@ -46,34 +57,57 @@ async def search_github_repositories(
 
 @mcp.tool()
 async def read_public_github_file(
-    owner: str, repo: str, path: str, ref: str = "HEAD"
+    owner: str,
+    repo: str,
+    path: str,
+    ref: str = "HEAD",
 ) -> dict:
     """Read a text file from a public GitHub repository."""
+
+    owner = owner.strip()
+    repo = repo.strip()
+    path = path.strip()
+    ref = ref.strip()
+
+    if not owner or not repo or not path or not ref:
+        return {
+            "error": "Owner, repository, path, and ref are required."
+        }
+
     url = (
-        f"https://raw.githubusercontent.com/"
+        "https://raw.githubusercontent.com/"
         f"{owner}/{repo}/{ref}/{path}"
     )
 
     async with httpx.AsyncClient(
-        timeout=20, follow_redirects=True
+        timeout=20,
+        follow_redirects=True,
     ) as client:
-        response = await client.get(url)
+        response = await client.get(
+            url,
+            headers={"User-Agent": "agent-reach-mcp"},
+        )
         response.raise_for_status()
+
+    content = response.text
 
     return {
         "path": path,
-        "content": response.text[:30000],
+        "ref": ref,
+        "content": content[:30000],
+        "truncated": len(content) > 30000,
     }
 
 
 @mcp.tool()
 def agent_reach_setup_status() -> dict:
-    """Report which capabilities this starter server supports."""
+    """Report the capabilities currently implemented by this server."""
     return {
         "status": "starter",
         "available": [
             "GitHub public repository search",
             "Public GitHub text-file reading",
+            "Capability status report",
         ],
         "not_integrated": [
             "Reddit",
@@ -81,8 +115,10 @@ def agent_reach_setup_status() -> dict:
             "X",
             "Bilibili",
         ],
+        "transport": "Streamable HTTP",
         "note": (
-            "This is not yet the full Agent-Reach integration."
+            "This server is a starter implementation, "
+            "not the complete Agent-Reach integration."
         ),
     }
 
@@ -97,12 +133,9 @@ if __name__ == "__main__":
         ]
     )
 
-    app = mcp.streamable_http_app(
-        transport_security=security
-    )
-
-    uvicorn.run(
-        app,
+    mcp.run(
+        transport="streamable-http",
         host="0.0.0.0",
         port=port,
+        transport_security=security,
     )
